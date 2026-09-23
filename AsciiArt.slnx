@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AsciiArt.McpServer/AsciiArt.McpServer.csproj" />
+    <Project Path="src/AsciiArt.TestClient/AsciiArt.TestClient.csproj" />
+  </Folder>
+</Solution>

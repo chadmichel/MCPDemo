@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASCII Art Demo</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #d9dde3;
+    --text: #1c2024;
+    --muted: #6b7480;
+    --accent: #2f6feb;
+    --art-bg: #10141a;
+    --art-fg: #8ce99a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #14171c;
+      --panel: #1b1f26;
+      --border: #2c323b;
+      --text: #e6e9ee;
+      --muted: #9aa3b0;
+      --accent: #5b8cf7;
+      --art-bg: #0b0e13;
+      --art-fg: #8ce99a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem 1rem;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1000px; margin: 0 auto; }
+  h1 { margin: 0 0 .25rem; font-size: 1.5rem; }
+  .sub { margin: 0 0 1.5rem; color: var(--muted); font-size: .9rem; }
+  .sub code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: .1rem .35rem; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 1rem;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem; margin-bottom: 1rem;
+  }
+  .field { display: flex; flex-direction: column; gap: .35rem; }
+  .field.grow { flex: 1 1 260px; }
+  label { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  input, select, button {
+    font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: .5rem .6rem;
+    -webkit-appearance: none; appearance: none;
+  }
+  select {
+    /* Re-add a chevron, since appearance:none removes the native one. */
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 18px) calc(50% + 2px), calc(100% - 13px) calc(50% + 2px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 2rem;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button { background: var(--accent); color: #fff; border-color: transparent; cursor: pointer; }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: default; }
+  .art-wrap { position: relative; }
+  pre#art {
+    background: var(--art-bg); color: var(--art-fg);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 1.25rem; margin: 0; min-height: 190px;
+    overflow-x: auto; white-space: pre;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.15;
+  }
+  pre#art.error { color: #ff8787; }
+  .meta { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+          margin-top: .6rem; color: var(--muted); font-size: .8rem; }
+  .copy { position: absolute; top: .65rem; right: .65rem; padding: .3rem .6rem; font-size: .75rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ASCII Art Demo</h1>
+  <p class="sub">
+    Rendered by the same Figgle-backed endpoints the MCP tool uses &mdash;
+    <code>GET /ascii</code> and <code>GET /fonts</code>.
+  </p>
+
+  <div class="controls">
+    <div class="field grow">
+      <label for="text">Text</label>
+      <input id="text" type="text" value="Hello" maxlength="120" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="font">Font</label>
+      <select id="font"><option>Standard</option></select>
+    </div>
+    <div class="field">
+      <label for="random">&nbsp;</label>
+      <button id="random" type="button">Random font</button>
+    </div>
+  </div>
+
+  <div class="art-wrap">
+    <button class="copy" id="copy" type="button">Copy</button>
+    <pre id="art">Loading…</pre>
+  </div>
+  <div class="meta">
+    <span id="dims"></span>
+    <span id="status"></span>
+  </div>
+</main>
+
+<script>
+  const textEl = document.getElementById('text');
+  const fontEl = document.getElementById('font');
+  const artEl = document.getElementById('art');
+  const dimsEl = document.getElementById('dims');
+  const statusEl = document.getElementById('status');
+  const copyBtn = document.getElementById('copy');
+
+  let allFonts = [];
+
+  // Allow /demo?text=Hello&font=Slant so a rendering can be linked to directly.
+  const params = new URLSearchParams(location.search);
+
+  function option(name) {
+    const o = document.createElement('option');
+    o.value = o.textContent = name;
+    return o;
+  }
+
+  async function loadFonts() {
+    try {
+      const res = await fetch('/fonts');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      allFonts = data.all;
+
+      fontEl.innerHTML = '';
+      const suggested = document.createElement('optgroup');
+      suggested.label = 'Suggested';
+      data.suggested.forEach(n => suggested.appendChild(option(n)));
+      fontEl.appendChild(suggested);
+
+      const all = document.createElement('optgroup');
+      all.label = 'All ' + data.count + ' fonts';
+      data.all.forEach(n => all.appendChild(option(n)));
+      fontEl.appendChild(all);
+
+      const wanted = params.get('font');
+      // Match case-insensitively, the same way the server resolves font names.
+      const match = wanted && allFonts.find(n => n.toLowerCase() === wanted.toLowerCase());
+      fontEl.value = match || wanted || 'Standard';
+      if (wanted && !match) {
+        // Not a known name; keep it so the server can explain why.
+        fontEl.appendChild(option(wanted));
+        fontEl.value = wanted;
+      }
+    } catch (err) {
+      statusEl.textContent = 'Could not load fonts: ' + err.message;
+    }
+  }
+
+  async function render() {
+    const text = textEl.value;
+    const font = fontEl.value;
+
+    if (!text.trim()) {
+      artEl.textContent = '';
+      artEl.classList.remove('error');
+      dimsEl.textContent = '';
+      statusEl.textContent = 'Enter some text.';
+      return;
+    }
+
+    statusEl.textContent = 'Rendering…';
+    try {
+      const url = '/ascii?text=' + encodeURIComponent(text) + '&font=' + encodeURIComponent(font);
+      const res = await fetch(url);
+      const body = await res.text();
+
+      if (!res.ok) {
+        artEl.textContent = body;
+        artEl.classList.add('error');
+        dimsEl.textContent = '';
+        statusEl.textContent = 'HTTP ' + res.status;
+        return;
+      }
+
+      artEl.textContent = body;
+      artEl.classList.remove('error');
+      const lines = body.split('\n');
+      dimsEl.textContent = lines.length + ' lines x ' +
+        Math.max(0, ...lines.map(l => l.length)) + ' columns';
+      statusEl.textContent = font;
+    } catch (err) {
+      artEl.textContent = String(err);
+      artEl.classList.add('error');
+      statusEl.textContent = 'Request failed';
+    }
+  }
+
+  let timer;
+  function debouncedRender() {
+    clearTimeout(timer);
+    timer = setTimeout(render, 150);
+  }
+
+  textEl.addEventListener('input', debouncedRender);
+  fontEl.addEventListener('change', render);
+
+  document.getElementById('random').addEventListener('click', () => {
+    if (!allFonts.length) return;
+    fontEl.value = allFonts[Math.floor(Math.random() * allFonts.length)];
+    render();
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(artEl.textContent);
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => (copyBtn.textContent = 'Copy'), 1200);
+    } catch {
+      copyBtn.textContent = 'Failed';
+      setTimeout(() => (copyBtn.textContent = 'Copy'), 1200);
+    }
+  });
+
+  if (params.has('text')) {
+    textEl.value = params.get('text');
+  }
+
+  loadFonts().then(render);
+</script>
+</body>
+</html>
