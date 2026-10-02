@@ -72,6 +72,42 @@ Notes:
 - Re-registering is only needed if the URL or name changes, not when you rebuild.
 - Inside Claude Code, `/mcp` shows connection status.
 
+## How Claude calls it
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Claude as Claude Code
+    participant MCP as AsciiArt MCP Server<br/>(localhost:5124/mcp)
+    participant Tool as AsciiArtTools
+    participant Figgle as FiggleFontCatalog / Figgle
+
+    Note over Claude,MCP: On startup (after `claude mcp add`)
+    Claude->>MCP: POST /mcp — initialize
+    MCP-->>Claude: serverInfo: AsciiArt v1.0.0
+    Claude->>MCP: POST /mcp — tools/list
+    MCP-->>Claude: generate_ascii_art(text, font)
+
+    User->>Claude: "write HELLO in ASCII art using the Big font"
+    Note over Claude: Model picks generate_ascii_art<br/>from the advertised tools
+    Claude->>MCP: POST /mcp — tools/call<br/>{ name: "generate_ascii_art",<br/>  arguments: { text: "HELLO", font: "Big" } }
+    MCP->>Tool: GenerateAsciiArt("HELLO", "Big")
+    Tool->>Tool: Validate text (non-empty, ≤ 120 chars)
+    Tool->>Figgle: Find("Big")
+    alt Font found
+        Figgle-->>Tool: FiggleFont
+        Tool->>Figgle: Render("HELLO")
+        Figgle-->>Tool: multi-line art
+        Tool-->>MCP: { text, font, art, width, height }
+        MCP-->>Claude: tools/call result
+        Claude-->>User: Shows the ASCII art
+    else Unknown font or bad text
+        Tool-->>MCP: McpException (with suggested fonts)
+        MCP-->>Claude: tool error
+        Claude-->>User: Retries with a valid font or explains the error
+    end
+```
+
 ## The tool
 
 `generate_ascii_art`:
